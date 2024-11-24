@@ -469,6 +469,7 @@ func (h *handlers) RegisterCourses(c echo.Context) error {
 		newlyAdded = append(newlyAdded, course)
 	}
 
+	// 登録済みの履修を取得
 	var alreadyRegistered []Course
 	query := "SELECT `courses`.*" +
 		" FROM `courses`" +
@@ -479,9 +480,11 @@ func (h *handlers) RegisterCourses(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
+	// 新しく履修登録 + 登録済みの履修
 	alreadyRegistered = append(alreadyRegistered, newlyAdded...)
 	for _, course1 := range newlyAdded {
 		for _, course2 := range alreadyRegistered {
+			// 異なるコースだが、受講日が被ってる（周期と曜日が重複してる）場合はエラーに追加
 			if course1.ID != course2.ID && course1.Period == course2.Period && course1.DayOfWeek == course2.DayOfWeek {
 				errors.ScheduleConflict = append(errors.ScheduleConflict, course1.ID)
 				break
@@ -493,12 +496,28 @@ func (h *handlers) RegisterCourses(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, errors)
 	}
 
+	// 履修登録
+	// for _, course := range newlyAdded {
+	// 	_, err = tx.Exec("INSERT INTO `registrations` (`course_id`, `user_id`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `course_id` = VALUES(`course_id`), `user_id` = VALUES(`user_id`)", course.ID, userID)
+	// 	if err != nil {
+	// 		c.Logger().Error(err)
+	// 		return c.NoContent(http.StatusInternalServerError)
+	// 	}
+	// }
+	regArgs := make([]interface{}, 0, len(newlyAdded)*2)
 	for _, course := range newlyAdded {
-		_, err = tx.Exec("INSERT INTO `registrations` (`course_id`, `user_id`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `course_id` = VALUES(`course_id`), `user_id` = VALUES(`user_id`)", course.ID, userID)
-		if err != nil {
-			c.Logger().Error(err)
-			return c.NoContent(http.StatusInternalServerError)
-		}
+		regArgs = append(regArgs, course.ID)
+		regArgs = append(regArgs, userID)
+	}
+
+	// NOTE: [takenouchi]bulk insert
+	_, err = tx.Exec(
+		"INSERT IGNORE INTO `registrations` (`course_id`, `user_id`) "+
+			"VALUES (?, ?)"+strings.Repeat(",(?,?)", len(newlyAdded)-1), regArgs...,
+	)
+	if err != nil {
+		c.Logger().Error(err)
+		return c.NoContent(http.StatusInternalServerError)
 	}
 
 	if err = tx.Commit(); err != nil {
@@ -1331,9 +1350,10 @@ func (h *handlers) GetAnnouncementList(c echo.Context) error {
 		args = append(args, courseID)
 	}
 
+	// NOTE: [takenouchi]index貼ってるカラムに変更
 	query += " AND `unread_announcements`.`user_id` = ?" +
 		" AND `registrations`.`user_id` = ?" +
-		" ORDER BY `announcements`.`id` DESC" +
+		" ORDER BY `unread_announcements`.`announcement_id` DESC" +
 		" LIMIT ? OFFSET ?"
 	args = append(args, userID, userID)
 
