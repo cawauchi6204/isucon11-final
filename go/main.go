@@ -45,7 +45,7 @@ func main() {
 	e.Use(session.Middleware(sessions.NewCookieStore([]byte("trapnomura"))))
 
 	db, _ := GetDB(false)
-	db.SetMaxOpenConns(100)
+	db.SetMaxOpenConns(1)
 
 	h := &handlers{
 		DB: db,
