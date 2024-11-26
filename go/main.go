@@ -1111,7 +1111,7 @@ func (h *handlers) SubmitAssignment(c echo.Context) error {
 	}
 
 	var registrationCount int
-	if err := tx.Get(&registrationCount, "SELECT COUNT(*) FROM `registrations` WHERE `user_id` = ? AND `course_id` = ?", userID, courseID); err != nil {
+	if err := tx.Get(&registrationCount, "SELECT COUNT(*) FROM `registrations`"); err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
